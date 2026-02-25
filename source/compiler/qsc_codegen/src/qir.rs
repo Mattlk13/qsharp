@@ -10,7 +10,9 @@ mod tests;
 use qsc_data_structures::{attrs::Attributes, target::TargetCapabilityFlags};
 use qsc_eval::val::Value;
 use qsc_lowerer::map_hir_package_to_fir;
-use qsc_partial_eval::{ProgramEntry, partially_evaluate, partially_evaluate_call};
+use qsc_partial_eval::{
+    PartialEvalConfig, ProgramEntry, partially_evaluate, partially_evaluate_call,
+};
 use qsc_rca::PackageStoreComputeProperties;
 use qsc_rir::{
     passes::check_and_transform,
@@ -45,8 +47,15 @@ pub fn fir_to_rir(
     capabilities: TargetCapabilityFlags,
     compute_properties: Option<PackageStoreComputeProperties>,
     entry: &ProgramEntry,
+    partial_eval_config: PartialEvalConfig,
 ) -> Result<(Program, Program), qsc_partial_eval::Error> {
-    let mut program = get_rir_from_compilation(fir_store, compute_properties, entry, capabilities)?;
+    let mut program = get_rir_from_compilation(
+        fir_store,
+        compute_properties,
+        entry,
+        capabilities,
+        partial_eval_config,
+    )?;
     let orig = program.clone();
     check_and_transform(&mut program);
     Ok((orig, program))
@@ -59,7 +68,15 @@ pub fn fir_to_qir(
     compute_properties: Option<PackageStoreComputeProperties>,
     entry: &ProgramEntry,
 ) -> Result<String, qsc_partial_eval::Error> {
-    let mut program = get_rir_from_compilation(fir_store, compute_properties, entry, capabilities)?;
+    let mut program = get_rir_from_compilation(
+        fir_store,
+        compute_properties,
+        entry,
+        capabilities,
+        PartialEvalConfig {
+            generate_debug_metadata: false,
+        },
+    )?;
     check_and_transform(&mut program);
     Ok(ToQir::<String>::to_qir(&program, &program))
 }
@@ -77,8 +94,16 @@ pub fn fir_to_qir_from_callable(
         analyzer.analyze_all()
     });
 
-    let mut program =
-        partially_evaluate_call(fir_store, &compute_properties, callable, args, capabilities)?;
+    let mut program = partially_evaluate_call(
+        fir_store,
+        &compute_properties,
+        callable,
+        args,
+        capabilities,
+        PartialEvalConfig {
+            generate_debug_metadata: false,
+        },
+    )?;
     check_and_transform(&mut program);
     Ok(ToQir::<String>::to_qir(&program, &program))
 }
@@ -88,13 +113,20 @@ fn get_rir_from_compilation(
     compute_properties: Option<PackageStoreComputeProperties>,
     entry: &ProgramEntry,
     capabilities: TargetCapabilityFlags,
+    partial_eval_config: PartialEvalConfig,
 ) -> Result<rir::Program, qsc_partial_eval::Error> {
     let compute_properties = compute_properties.unwrap_or_else(|| {
         let analyzer = qsc_rca::Analyzer::init(fir_store);
         analyzer.analyze_all()
     });
 
-    partially_evaluate(fir_store, &compute_properties, entry, capabilities)
+    partially_evaluate(
+        fir_store,
+        &compute_properties,
+        entry,
+        capabilities,
+        partial_eval_config,
+    )
 }
 
 /// A trait for converting a type into QIR of type `T`.
@@ -234,7 +266,7 @@ impl ToQir<String> for rir::Instruction {
             rir::Instruction::BitwiseXor(lhs, rhs, variable) => {
                 simple_bitwise_to_qir("xor", lhs, rhs, *variable, program)
             }
-            rir::Instruction::Branch(cond, true_id, false_id) => {
+            rir::Instruction::Branch(cond, true_id, false_id, _) => {
                 format!(
                     "  br {}, label %{}, label %{}",
                     ToQir::<String>::to_qir(cond, program),
@@ -242,7 +274,7 @@ impl ToQir<String> for rir::Instruction {
                     ToQir::<String>::to_qir(false_id, program)
                 )
             }
-            rir::Instruction::Call(call_id, args, output) => {
+            rir::Instruction::Call(call_id, args, output, _) => {
                 call_to_qir(args, *call_id, *output, program)
             }
             rir::Instruction::Fadd(lhs, rhs, variable) => {
