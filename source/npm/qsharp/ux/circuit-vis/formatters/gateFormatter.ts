@@ -107,15 +107,10 @@ const _createGate = (
   // `GateType.Group` corresponds to an *expanded* group, which will contain clickable gates
   // so therefore should not itself be clickable
   if (renderData.link && renderData.type !== GateType.Group) {
-    const linkElem = createSvgElement("a", {
-      href: renderData.link.href,
-      class: "qs-circuit-source-link",
-    });
-
-    // Add title as a child <title> element for accessibility and hover tooltip
-    const titleElem = createSvgElement("title");
-    titleElem.textContent = renderData.link.title;
-    linkElem.appendChild(titleElem);
+    const linkElem = createLinkElement(
+      renderData.link.href,
+      renderData.link.title,
+    );
 
     // Add the gate elements as children of the link
     for (const e of svgElems) {
@@ -276,6 +271,19 @@ const _measure = (x: number, y: number, wireYs: number[]): SVGElement => {
 };
 
 const use_katex = true;
+
+function createLinkElement(href: string, title: string) {
+  const linkElem = createSvgElement("a", {
+    href: href,
+    class: "qs-circuit-source-link",
+  });
+
+  // Add title as a child <title> element for accessibility and hover tooltip
+  const titleElem = createSvgElement("title");
+  titleElem.textContent = title;
+  linkElem.appendChild(titleElem);
+  return linkElem;
+}
 
 function _style_gate_text(gate: SVGTextElement) {
   if (!use_katex) return;
@@ -606,7 +614,16 @@ const _groupedOperations = (renderData: GateRenderData): SVGElement => {
     y + groupTopPadding / 2 + groupLabelPaddingY,
   );
   labelText.classList.add("qs-group-label");
-  elems.push(labelText);
+
+  if (renderData.link) {
+    const link = createLinkElement(renderData.link.href, renderData.link.title);
+    // Make the text element clickable
+    labelText.style.pointerEvents = "all";
+    link.appendChild(labelText);
+    elems.push(link);
+  } else {
+    elems.push(labelText);
+  }
 
   return _createGate(elems, renderData);
 };
@@ -681,7 +698,15 @@ const _classicalControlled = (
   );
   labelText.classList.add("qs-group-label");
 
-  elems.push(labelText);
+  if (renderData.link) {
+    const link = createLinkElement(renderData.link.href, renderData.link.title);
+    // Make the text element clickable
+    labelText.style.pointerEvents = "all";
+    link.appendChild(labelText);
+    elems.push(link);
+  } else {
+    elems.push(labelText);
+  }
 
   if (children != null) {
     // Get SVG for gates controlled on 0
